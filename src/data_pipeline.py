@@ -75,6 +75,15 @@ def _normalise_column_name(
     found, ``None`` is returned instead of raising an error.
     """
 
+    # First standardise obvious inconsistencies such as leading/trailing spaces.
+    renamed: Dict[str, str] = {}
+    for col in df.columns:
+        stripped = col.strip()
+        if stripped != col and stripped not in df.columns:
+            renamed[col] = stripped
+    if renamed:
+        df = df.rename(columns=renamed)
+
     if column in df.columns:
         return df, column
 
