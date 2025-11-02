@@ -1,0 +1,10 @@
+branca>=0.6
+folium>=0.14
+geopandas>=0.13
+networkx>=3.0
+numpy>=1.23
+osmnx>=1.5
+pandas>=1.5
+pyproj>=3.4
+rtree>=1.0
+shapely>=2.0
