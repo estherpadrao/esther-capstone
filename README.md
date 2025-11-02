@@ -142,16 +142,56 @@ where expected.
 
      ```python
      from google.colab import files
-     files.upload()  # select your GeoJSON/CSV layers when prompted
+     from pathlib import Path
 
-     !mkdir -p data
-     !mv hexagons.geojson data/
-     !mv hospitals.geojson data/
-     !mv parks.geojson data/
-     !mv schools.geojson data/
-     !mv permits.csv data/
-     # repeat the mv commands for any additional layers
+     uploaded = files.upload()  # select your GeoJSON/CSV layers when prompted
+
+     data_dir = Path("data")
+     data_dir.mkdir(exist_ok=True)
+
+     # Map the uploaded filenames to the ones used by the pipeline.
+     # Update the keys to match the values shown in `uploaded.keys()`.
+     rename_map = {
+         "Active_Street-Use_Permits_20251031.csv": "permits.csv",
+         "Health_Care_Facilities_20251030.geojson": "hospitals.geojson",
+         "Recreation_and_Parks_Properties_20251031.geojson": "parks.geojson",
+         "Schools_20251031.csv": "schools.csv",
+         "MTA_Bike_Network_Linear_Features_20251031.geojson": "bike_network.geojson",
+         "Muni_Simple_Routes_20251031.geojson": "transit_lines.geojson",
+         "Muni_Stops_20251031.geojson": "transit_stops.geojson",
+         # add your hexagon grid file and any other layers here
+     }
+
+     for original_name, target_name in rename_map.items():
+         source = Path(original_name)
+         if source.exists():
+             source.rename(data_dir / target_name)
+         else:
+             print(f"Skipping {original_name!r} because it was not uploaded in this session")
      ```
+
+     This approach avoids shell `mv` errors when Colab appends suffixes like
+     `" (1)"` to uploaded files (e.g., `"Muni_Simple_Routes_20251031 (1).geojson"`).
+     Update the `rename_map` keys to match the exact names reported in
+     `uploaded.keys()` before running the cell.
+
+     If any amenity dataset only exists as a CSV with latitude/longitude
+     columns (for example, the `Schools_20251031.csv` download), convert it to a
+     GeoJSON file after uploading so the pipeline can read it with GeoPandas:
+
+     ```python
+     import geopandas as gpd
+     import pandas as pd
+
+     df = pd.read_csv("data/schools.csv")
+     geometry = gpd.points_from_xy(df["Longitude"], df["Latitude"], crs=4326)
+     schools_gdf = gpd.GeoDataFrame(df, geometry=geometry)
+     schools_gdf.to_file("data/schools.geojson", driver="GeoJSON")
+     ```
+
+     Adjust the column names (`"Longitude"`, `"Latitude"`) to match the headers
+     in your CSV, then point the pipeline to `data/schools.geojson` instead of
+     the CSV path.
 
    * **Hosted in a different GitHub project or URL** – Download them into the
      `data/` folder with `wget` (or clone the data-only repo and copy the
@@ -177,7 +217,7 @@ where expected.
        parks_path=Path("data/parks.geojson"),
        schools_path=Path("data/schools.geojson"),
        permits_path=Path("data/permits.csv"),
-       bike_network_path=Path("data/bike_routes.geojson"),
+       bike_network_path=Path("data/bike_network.geojson"),
        transit_lines_path=Path("data/transit_lines.geojson"),
        transit_stops_path=Path("data/transit_stops.geojson"),
        output_map=Path("outputs/sf_layers.html"),
@@ -185,6 +225,12 @@ where expected.
        output_per_hex_geojson=Path("outputs/pci_per_hex.geojson"),
        output_system=Path("outputs/system_pci.json"),
    )
+
+   # Override any paths whose filenames you chose not to rename, e.g.:
+   # config = config.replace(
+   #     hex_path=Path("data/sf_polygon.geojson"),
+   #     schools_path=Path("data/Schools_20251031.csv"),
+   # )
 
    per_hex, system_pci = run_pipeline(config)
    per_hex.head()
