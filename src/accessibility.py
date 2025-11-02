@@ -25,6 +25,7 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 from shapely.geometry import Point
+from shapely.geometry.base import BaseGeometry
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,19 @@ def _income_adjustment(
     return base_cost_min * factor
 
 
+def _as_point(geometry: BaseGeometry) -> Optional[Point]:
+    """Return a representative point for an arbitrary geometry."""
+
+    if isinstance(geometry, Point):
+        return geometry
+    if geometry.is_empty:
+        return None
+    try:
+        return geometry.representative_point()
+    except AttributeError:  # pragma: no cover - safety for exotic geometries
+        return None
+
+
 def _amenity_accessibility(
     hex_centroid: Point,
     amenity_gdf: gpd.GeoDataFrame,
@@ -211,7 +225,9 @@ def _amenity_accessibility(
 
     score = 0.0
     for _, amenity in amenity_gdf.iterrows():
-        destination: Point = amenity.geometry
+        destination = _as_point(amenity.geometry)
+        if destination is None:
+            continue
         base_cost = network.multimodal_travel_cost(hex_centroid, destination)
         if base_cost is None:
             continue
