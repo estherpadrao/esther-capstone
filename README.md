@@ -132,8 +132,37 @@ where expected.
    !pip install -r requirements.txt
    ```
 
-3. Mount or upload your data files (hexagons, amenities, permits, transit
-   layers) so they are available under the notebook's working directory.
+3. Stage your data so the notebook can read it.  Pick the option that matches
+   where the files currently live:
+
+   * **Already tracked in GitHub** – If your datasets are committed to this
+     repository (or another public repo), cloning in step 1 already downloaded
+     them.  You can confirm with `!ls data`.
+   * **Stored on your computer** – Upload them straight from the browser:
+
+     ```python
+     from google.colab import files
+     files.upload()  # select your GeoJSON/CSV layers when prompted
+
+     !mkdir -p data
+     !mv hexagons.geojson data/
+     !mv hospitals.geojson data/
+     !mv parks.geojson data/
+     !mv schools.geojson data/
+     !mv permits.csv data/
+     # repeat the mv commands for any additional layers
+     ```
+
+   * **Hosted in a different GitHub project or URL** – Download them into the
+     `data/` folder with `wget` (or clone the data-only repo and copy the
+     relevant files):
+
+     ```python
+     !mkdir -p data
+     !wget -O data/hexagons.geojson https://raw.githubusercontent.com/<user>/<repo>/main/hexagons.geojson
+     !wget -O data/hospitals.geojson https://raw.githubusercontent.com/<user>/<repo>/main/hospitals.geojson
+     # repeat for the remaining layers
+     ```
 
 4. Run the pipeline directly from a notebook cell, reusing the same arguments
    exposed by the CLI:
