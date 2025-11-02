@@ -97,6 +97,7 @@ python -m src.data_pipeline \
   --permits data/permits.csv \
   --permits-lat-column latitude \
   --permits-lon-column longitude \
+  --permits-location-column "Location 1" \
   --bike-network data/bike_routes.geojson \
   --transit-lines data/transit_lines.geojson \
   --transit-stops data/transit_stops.geojson \
@@ -109,8 +110,9 @@ python -m src.data_pipeline \
 Adjust the command line arguments to match your filenames and column naming
 conventions (for instance if your hexagon file stores the population column
 under a different name).  The CLI offers flags for datasets stored in
-multi-layer GeoPackages (`--hospital-layer`, `--park-layer`, etc.) and for
-permits already stored as spatial formats (`--permits-are-points`).
+multi-layer GeoPackages (`--hospital-layer`, `--park-layer`, etc.), for permits
+already stored as spatial formats (`--permits-are-points`), and for CSV files
+where the coordinates live in a single text column (`--permits-location-column`).
 
 The generated HTML map colours the hexagons by the computed PCI and includes
 separate toggleable layers for hospitals, schools, permits, transit lines, bike
@@ -175,23 +177,30 @@ where expected.
      Update the `rename_map` keys to match the exact names reported in
      `uploaded.keys()` before running the cell.
 
-     If any amenity dataset only exists as a CSV with latitude/longitude
-     columns (for example, the `Schools_20251031.csv` download), convert it to a
-     GeoJSON file after uploading so the pipeline can read it with GeoPandas:
+     If any amenity dataset only exists as a CSV, convert it to a GeoJSON file
+     after uploading so the pipeline can read it with GeoPandas.  The San
+     Francisco schools download, for example, stores the coordinates inside a
+     single `"Location 1"` column formatted like `"San Francisco, CA (37.76,
+     -122.45)"`.  The snippet below extracts the numeric latitude/longitude and
+     writes the GeoJSON output expected by the pipeline:
 
      ```python
      import geopandas as gpd
      import pandas as pd
 
      df = pd.read_csv("data/schools.csv")
+     coords = df["Location 1"].astype(str).str.extract(
+         r"\((?P<Latitude>[-+]?\d*\.?\d+),\s*(?P<Longitude>[-+]?\d*\.?\d+)\)"
+     )
+     df = df.join(coords.astype(float))
      geometry = gpd.points_from_xy(df["Longitude"], df["Latitude"], crs=4326)
      schools_gdf = gpd.GeoDataFrame(df, geometry=geometry)
      schools_gdf.to_file("data/schools.geojson", driver="GeoJSON")
      ```
 
-     Adjust the column names (`"Longitude"`, `"Latitude"`) to match the headers
-     in your CSV, then point the pipeline to `data/schools.geojson` instead of
-     the CSV path.
+     Update the column name (`"Location 1"`) if your dataset stores the
+     coordinates elsewhere, and point the pipeline to `data/schools.geojson`
+     instead of the CSV path.
 
    * **Hosted in a different GitHub project or URL** – Download them into the
      `data/` folder with `wget` (or clone the data-only repo and copy the

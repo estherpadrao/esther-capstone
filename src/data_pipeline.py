@@ -37,13 +37,102 @@ def _load_vector_layer(path: Path, layer: str | None = None) -> gpd.GeoDataFrame
     return gdf
 
 
-def _load_permits(path: Path, lat_column: str, lon_column: str) -> gpd.GeoDataFrame:
-    """Load a CSV file with latitude/longitude columns as a GeoDataFrame."""
+def _split_location_column(
+    df: pd.DataFrame, *, location_column: str, lat_name: str, lon_name: str
+) -> pd.DataFrame:
+    """Extract latitude/longitude floats from a column like "CA (lat, lon)"."""
+
+    if location_column not in df.columns:
+        raise ValueError(
+            f"Column '{location_column}' not found while parsing location coordinates."
+        )
+
+    # Extract numeric parts inside parentheses regardless of extra labels or spaces.
+    extracted = df[location_column].astype(str).str.extract(
+        r"\((?P<lat>[-+]?\d*\.?\d+),\s*(?P<lon>[-+]?\d*\.?\d+)\)"
+    )
+
+    if extracted.isna().all(axis=None):
+        raise ValueError(
+            "Could not parse latitude/longitude values from column "
+            f"'{location_column}'. Ensure it looks like 'City (lat, lon)'."
+        )
+
+    df = df.copy()
+    df[lat_name] = extracted["lat"].astype(float)
+    df[lon_name] = extracted["lon"].astype(float)
+    return df
+
+
+def _normalise_column_name(
+    df: pd.DataFrame, column: str, *, optional: bool = False
+) -> tuple[pd.DataFrame, Optional[str]]:
+    """Ensure a column exists using case-insensitive matching.
+
+    Returns a tuple of ``(dataframe, resolved_column_name)`` where the
+    dataframe may have been renamed so the resolved column matches the
+    requested ``column`` exactly.  If ``optional`` is ``True`` and no match is
+    found, ``None`` is returned instead of raising an error.
+    """
+
+    # First standardise obvious inconsistencies such as leading/trailing spaces.
+    renamed: Dict[str, str] = {}
+    for col in df.columns:
+        stripped = col.strip()
+        if stripped != col and stripped not in df.columns:
+            renamed[col] = stripped
+    if renamed:
+        df = df.rename(columns=renamed)
+
+    if column in df.columns:
+        return df, column
+
+    lowered = {col.casefold(): col for col in df.columns}
+    match = lowered.get(column.casefold())
+    if match is not None:
+        df = df.rename(columns={match: column})
+        return df, column
+
+    if optional:
+        return df, None
+
+    raise ValueError(f"Column '{column}' not found in provided dataset.")
+
+
+def _load_permits(
+    path: Path,
+    lat_column: str,
+    lon_column: str,
+    *,
+    location_column: Optional[str] = None,
+) -> gpd.GeoDataFrame:
+    """Load a CSV file with coordinates as a GeoDataFrame.
+
+    Supports either explicit latitude/longitude columns or a single text column
+    containing a pattern such as "CA (37.77, -122.42)".  The latter is parsed
+    into float columns before creating point geometries.
+    """
 
     df = pd.read_csv(path)
-    for column in (lat_column, lon_column):
-        if column not in df.columns:
-            raise ValueError(f"Permits file is missing required column '{column}'.")
+
+    df, lat_column = _normalise_column_name(df, lat_column)
+    df, lon_column = _normalise_column_name(df, lon_column)
+
+    if location_column:
+        df, resolved_location = _normalise_column_name(
+            df, location_column, optional=True
+        )
+        if resolved_location:
+            location_column = resolved_location
+
+    if location_column and (lat_column not in df.columns or lon_column not in df.columns):
+        df = _split_location_column(
+            df,
+            location_column=location_column,
+            lat_name=lat_column,
+            lon_name=lon_column,
+        )
+
     df = df.dropna(subset=[lat_column, lon_column])
     geometry = gpd.points_from_xy(df[lon_column], df[lat_column], crs=WGS84)
     return gpd.GeoDataFrame(df, geometry=geometry, crs=WGS84)
@@ -286,6 +375,7 @@ class PipelineConfig:
     permit_column: str = "street_permits"
     permits_lat_column: str = "latitude"
     permits_lon_column: str = "longitude"
+    permits_location_column: Optional[str] = None
     hospital_mass_column: Optional[str] = None
     school_mass_column: Optional[str] = None
     park_layer: Optional[str] = None
@@ -313,7 +403,10 @@ def run_pipeline(config: PipelineConfig) -> tuple[pd.DataFrame, float]:
         permits = _load_vector_layer(config.permits_path)
     else:
         permits = _load_permits(
-            config.permits_path, config.permits_lat_column, config.permits_lon_column
+            config.permits_path,
+            config.permits_lat_column,
+            config.permits_lon_column,
+            location_column=config.permits_location_column,
         )
 
     parks_polygons, parks_points = _prepare_parks(parks_raw)
@@ -417,6 +510,7 @@ def _parse_args(argv: Optional[Iterable[str]] = None) -> PipelineConfig:
     parser.add_argument("--permit-column", default="street_permits")
     parser.add_argument("--permits-lat-column", default="latitude")
     parser.add_argument("--permits-lon-column", default="longitude")
+    parser.add_argument("--permits-location-column")
     parser.add_argument("--permits-are-points", action="store_true")
     parser.add_argument("--hospital-mass-column")
     parser.add_argument("--school-mass-column")
@@ -446,6 +540,7 @@ def _parse_args(argv: Optional[Iterable[str]] = None) -> PipelineConfig:
         permit_column=args.permit_column,
         permits_lat_column=args.permits_lat_column,
         permits_lon_column=args.permits_lon_column,
+        permits_location_column=args.permits_location_column,
         hospital_mass_column=args.hospital_mass_column,
         school_mass_column=args.school_mass_column,
         hospital_layer=args.hospital_layer,
