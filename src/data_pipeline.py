@@ -122,8 +122,12 @@ def _load_permits(
         df, resolved_location = _normalise_column_name(
             df, location_column, optional=True
         )
-        if resolved_location:
-            location_column = resolved_location
+        # ``optional=True`` returns ``None`` when the column is not present. In
+        # that scenario we must clear ``location_column`` so a missing
+        # "Location 1" header does not trigger an unnecessary parsing attempt
+        # (and subsequent KeyError) when explicit latitude/longitude columns are
+        # already available.
+        location_column = resolved_location
 
     if location_column and (lat_column not in df.columns or lon_column not in df.columns):
         df = _split_location_column(
