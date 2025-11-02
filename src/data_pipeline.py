@@ -118,23 +118,33 @@ def _load_permits(
     df, lat_column = _normalise_column_name(df, lat_column)
     df, lon_column = _normalise_column_name(df, lon_column)
 
+    has_latlon = lat_column in df.columns and lon_column in df.columns
+
     if location_column:
         df, resolved_location = _normalise_column_name(
             df, location_column, optional=True
         )
-        # ``optional=True`` returns ``None`` when the column is not present. In
-        # that scenario we must clear ``location_column`` so a missing
-        # "Location 1" header does not trigger an unnecessary parsing attempt
-        # (and subsequent KeyError) when explicit latitude/longitude columns are
-        # already available.
         location_column = resolved_location
+        if location_column and location_column not in df.columns:
+            location_column = None
 
-    if location_column and (lat_column not in df.columns or lon_column not in df.columns):
+    if not has_latlon and location_column:
+        # Only attempt to parse the fallback location column when explicit
+        # latitude/longitude columns are absent.  This ensures we never try to
+        # read a non-existent ``Location 1`` field merely because a caller kept
+        # the optional argument while providing well-formed coordinate columns.
         df = _split_location_column(
             df,
             location_column=location_column,
             lat_name=lat_column,
             lon_name=lon_column,
+        )
+        has_latlon = lat_column in df.columns and lon_column in df.columns
+
+    if not has_latlon:
+        raise ValueError(
+            "Permit dataset must contain latitude/longitude columns or a "
+            "parseable location column."
         )
 
     df = df.dropna(subset=[lat_column, lon_column])
