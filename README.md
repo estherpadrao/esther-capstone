@@ -2,6 +2,22 @@
 
 Esther's Capstone Code, Data and Outputs
 
+## Getting started
+
+The repository targets Python 3.10+ and relies on the scientific geo stack
+(`geopandas`, `osmnx`, `folium`, etc.).  Install the dependencies before running
+any scripts:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+> **Colab tip:** add a notebook cell with `!pip install -r requirements.txt`
+> after cloning or uploading the repository so the environment matches the
+> local setup.
+
 ## Accessibility analysis toolkit
 
 The `src/accessibility.py` module provides a reusable implementation of a
@@ -100,3 +116,51 @@ The generated HTML map colours the hexagons by the computed PCI and includes
 separate toggleable layers for hospitals, schools, permits, transit lines, bike
 lanes and park polygons, providing a quick visual QA that every geometry falls
 where expected.
+
+### Using the pipeline in Google Colab
+
+1. Clone or upload the repository into your Colab workspace:
+
+   ```python
+   !git clone https://github.com/<your-org>/esther-capstone.git
+   %cd esther-capstone
+   ```
+
+2. Install the dependencies in a new cell:
+
+   ```python
+   !pip install -r requirements.txt
+   ```
+
+3. Mount or upload your data files (hexagons, amenities, permits, transit
+   layers) so they are available under the notebook's working directory.
+
+4. Run the pipeline directly from a notebook cell, reusing the same arguments
+   exposed by the CLI:
+
+   ```python
+   from pathlib import Path
+   from src import PipelineConfig, run_pipeline
+
+   config = PipelineConfig(
+       hex_path=Path("data/hexagons.geojson"),
+       hospitals_path=Path("data/hospitals.geojson"),
+       parks_path=Path("data/parks.geojson"),
+       schools_path=Path("data/schools.geojson"),
+       permits_path=Path("data/permits.csv"),
+       bike_network_path=Path("data/bike_routes.geojson"),
+       transit_lines_path=Path("data/transit_lines.geojson"),
+       transit_stops_path=Path("data/transit_stops.geojson"),
+       output_map=Path("outputs/sf_layers.html"),
+       output_per_hex=Path("outputs/pci_per_hex.csv"),
+       output_per_hex_geojson=Path("outputs/pci_per_hex.geojson"),
+       output_system=Path("outputs/system_pci.json"),
+   )
+
+   per_hex, system_pci = run_pipeline(config)
+   per_hex.head()
+   system_pci
+   ```
+
+This Colab workflow mirrors the command-line invocation while keeping all
+intermediate outputs accessible for inspection within the notebook session.
